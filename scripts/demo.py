@@ -11,6 +11,7 @@ from torch.utils.data import Dataset
 from torch import optim, nn
 import open3d as o3d
 
+
 cwd = os.getcwd()
 sys.path.append(cwd)
 from datasets.indoor import IndoorDataset
@@ -50,7 +51,7 @@ class ThreeDMatchDemo(Dataset):
         
         #src_pcd = o3d.io.read_point_cloud(self.src_path)
         #tgt_pcd = o3d.io.read_point_cloud(self.tgt_path)
-        #src_pcd = src_pcd.voxel_down_sample(0.025)
+        #src_pcd = src_pcd.voxel_down_sample(0.025)  #original is 0.025
         #tgt_pcd = tgt_pcd.voxel_down_sample(0.025)
         #src_pcd = np.array(src_pcd.points).astype(np.float32)
         #tgt_pcd = np.array(tgt_pcd.points).astype(np.float32)
@@ -73,8 +74,40 @@ def lighter(color, percent):
     vector = white-color
     return color + vector * percent
 
+def calculate_relative_transformation(src_path, tgt_path):
+    try:
+        # Load the matrices, skipping the first row
+        src_matrix = np.loadtxt(src_path, skiprows=1)
+        tgt_matrix = np.loadtxt(tgt_path, skiprows=1)
 
-def draw_registration_result(src_raw, tgt_raw, src_overlap, tgt_overlap, src_saliency, tgt_saliency, tsfm):
+        # Check if matrices are 4x4
+        if src_matrix.shape != (4, 4) or tgt_matrix.shape != (4, 4):
+            print("Error: Matrices are not of shape 4x4")
+            return None
+
+        # Calculate the relative transformation
+        relative_transform = np.dot(np.linalg.inv(tgt_matrix), src_matrix)
+        return relative_transform
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return None
+
+def transformation_error(pred_trans, gt_trans):
+    # Convert to PyTorch tensor
+    pred_trans = torch.from_numpy(pred_trans).float().clone() 
+    gt_trans = torch.from_numpy(gt_trans).float().clone()  # .float() ensures the tensor is of type float
+    pred_R = pred_trans[:3, :3]
+    gt_R = gt_trans[:3, :3]
+    pred_t = pred_trans[:3, 3:4]
+    gt_t = gt_trans[:3, 3:4]
+    tr = torch.trace(pred_R.T @ gt_R)
+    RE = torch.acos(torch.clamp((tr - 1) / 2.0, min=-1, max=1)) * 180 / np.pi
+    TE = torch.norm(pred_t - gt_t) * 100
+    return RE, TE
+
+
+def draw_registration_result(src_raw, tgt_raw, src_overlap, tgt_overlap, src_saliency, tgt_saliency, tsfm, tsfm_gt):
     ########################################
     # 1. input point cloud
     src_pcd_before = to_o3d_pcd(src_raw)
@@ -101,6 +134,10 @@ def draw_registration_result(src_raw, tgt_raw, src_overlap, tgt_overlap, src_sal
     # 3. draw registrations
     src_pcd_after = copy.deepcopy(src_pcd_before)
     src_pcd_after.transform(tsfm)
+    
+    src_pcd_after_gt = copy.deepcopy(src_pcd_before)
+    src_pcd_after_gt.transform(tsfm_gt)
+    tgt_pcd_before_gt = copy.deepcopy(tgt_pcd_before)
 
     vis1 = o3d.visualization.Visualizer()
     vis1.create_window(window_name='Input', width=960, height=540, left=0, top=0)
@@ -117,9 +154,15 @@ def draw_registration_result(src_raw, tgt_raw, src_overlap, tgt_overlap, src_sal
     vis3.add_geometry(src_pcd_after)
     vis3.add_geometry(tgt_pcd_before)
     
+    vis4 = o3d.visualization.Visualizer()
+    vis4.create_window(window_name ='ground truth', width=960, height=540, left=960, top=600)
+    vis4.add_geometry(src_pcd_after_gt)
+    vis4.add_geometry(tgt_pcd_before_gt)
+    
+    
     while True:
         vis1.update_geometry(src_pcd_before)
-        vis3.update_geometry(tgt_pcd_before)
+        vis1.update_geometry(tgt_pcd_before)
         if not vis1.poll_events():
             break
         vis1.update_renderer()
@@ -135,17 +178,24 @@ def draw_registration_result(src_raw, tgt_raw, src_overlap, tgt_overlap, src_sal
         if not vis3.poll_events():
             break
         vis3.update_renderer()
+        
+        vis4.update_geometry(src_pcd_after_gt)
+        vis4.update_geometry(tgt_pcd_before)
+        if not vis4.poll_events():
+            break
+        vis4.update_renderer()
 
     vis1.destroy_window()
     vis2.destroy_window()
-    vis3.destroy_window()    
+    vis3.destroy_window()
+
 
 
 def main(config, demo_loader):
     config.model.eval()
     c_loader_iter = demo_loader.__iter__()
     with torch.no_grad():
-        inputs = c_loader_iter.next()
+        inputs = next(c_loader_iter)
         ##################################
         # load inputs to device.
         for k, v in inputs.items():  
@@ -184,11 +234,28 @@ def main(config, demo_loader):
             probs = (tgt_scores / tgt_scores.sum()).numpy().flatten()
             idx = np.random.choice(idx, size= config.n_points, replace=False, p=probs)
             tgt_pcd, tgt_feats = tgt_pcd[idx], tgt_feats[idx]
+            
+            
+        # Assuming src_feats and tgt_feats correspond to the features of the selected points in src_pcd and tgt_pcd
+        if isinstance(src_feats, torch.Tensor):
+            src_feats = src_feats.detach().cpu().numpy()
+        if isinstance(tgt_feats, torch.Tensor):
+            tgt_feats = tgt_feats.detach().cpu().numpy()   
 
         ########################################
         # run ransac and draw registration
         tsfm = ransac_pose_estimation(src_pcd, tgt_pcd, src_feats, tgt_feats, mutual=False)
-        draw_registration_result(src_raw, tgt_raw, src_overlap, tgt_overlap, src_saliency, tgt_saliency, tsfm)
+        print(tsfm)
+        tsfm_gt = calculate_relative_transformation(config.src_pcd_trs,config.tgt_pcd_trs)
+        
+        # RE TE
+        """
+        re, te = transformation_error(tsfm, tsfm_gt)
+        print(f'RE: %.2f, TE: %.2f' % (re, te))
+        """
+        draw_registration_result(src_raw, tgt_raw, src_overlap, tgt_overlap, src_saliency, tgt_saliency, tsfm, tsfm_gt)
+        
+        
 
 
 if __name__ == '__main__':
@@ -196,6 +263,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('config', type=str, help= 'Path to the config file.')
     args = parser.parse_args()
+    
     config = load_config(args.config)
     config = edict(config)
     if config.gpu_mode:
@@ -223,7 +291,6 @@ if __name__ == '__main__':
     info_train = load_obj(config.train_info)
     train_set = IndoorDataset(info_train,config,data_augmentation=True)
     demo_set = ThreeDMatchDemo(config, config.src_pcd, config.tgt_pcd)
-
     _, neighborhood_limits = get_dataloader(dataset=train_set,
                                         batch_size=config.batch_size,
                                         shuffle=True,
@@ -237,7 +304,9 @@ if __name__ == '__main__':
 
     # load pretrained weights
     assert config.pretrain != None
-    state = torch.load(config.pretrain)
+    #state = torch.load(config.pretrain)
+    state = torch.load(config.pretrain, map_location=torch.device('cpu'))
+
     config.model.load_state_dict(state['state_dict'])
 
     # do pose estimation
