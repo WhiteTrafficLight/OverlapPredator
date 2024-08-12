@@ -45,16 +45,16 @@ class ThreeDMatchDemo(Dataset):
 
     def __getitem__(self,item): 
         # get pointcloud
-        src_pcd = torch.load(self.src_path).astype(np.float32)
-        tgt_pcd = torch.load(self.tgt_path).astype(np.float32)   
+        #src_pcd = torch.load(self.src_path).astype(np.float32)
+        #tgt_pcd = torch.load(self.tgt_path).astype(np.float32)   
         
         
-        #src_pcd = o3d.io.read_point_cloud(self.src_path)
-        #tgt_pcd = o3d.io.read_point_cloud(self.tgt_path)
-        #src_pcd = src_pcd.voxel_down_sample(0.025)  #original is 0.025
-        #tgt_pcd = tgt_pcd.voxel_down_sample(0.025)
-        #src_pcd = np.array(src_pcd.points).astype(np.float32)
-        #tgt_pcd = np.array(tgt_pcd.points).astype(np.float32)
+        src_pcd = o3d.io.read_point_cloud(self.src_path)
+        tgt_pcd = o3d.io.read_point_cloud(self.tgt_path)
+        src_pcd = src_pcd.voxel_down_sample(0.025)  #original is 0.025
+        tgt_pcd = tgt_pcd.voxel_down_sample(0.025)
+        src_pcd = np.array(src_pcd.points).astype(np.float32)
+        tgt_pcd = np.array(tgt_pcd.points).astype(np.float32)
 
 
         src_feats=np.ones_like(src_pcd[:,:1]).astype(np.float32)
@@ -107,7 +107,7 @@ def transformation_error(pred_trans, gt_trans):
     return RE, TE
 
 
-def draw_registration_result(src_raw, tgt_raw, src_overlap, tgt_overlap, src_saliency, tgt_saliency, tsfm, tsfm_gt):
+def draw_registration_result(src_raw, tgt_raw, src_overlap, tgt_overlap, src_saliency, tgt_saliency, tsfm):#, tsfm_gt):
     ########################################
     # 1. input point cloud
     src_pcd_before = to_o3d_pcd(src_raw)
@@ -136,7 +136,8 @@ def draw_registration_result(src_raw, tgt_raw, src_overlap, tgt_overlap, src_sal
     src_pcd_after.transform(tsfm)
     
     src_pcd_after_gt = copy.deepcopy(src_pcd_before)
-    src_pcd_after_gt.transform(tsfm_gt)
+    #src_pcd_after_gt.transform(tsfm_gt)
+    src_pcd_after_gt.transform(tsfm)
     tgt_pcd_before_gt = copy.deepcopy(tgt_pcd_before)
 
     vis1 = o3d.visualization.Visualizer()
@@ -246,14 +247,14 @@ def main(config, demo_loader):
         # run ransac and draw registration
         tsfm = ransac_pose_estimation(src_pcd, tgt_pcd, src_feats, tgt_feats, mutual=False)
         print(tsfm)
-        tsfm_gt = calculate_relative_transformation(config.src_pcd_trs,config.tgt_pcd_trs)
+        #tsfm_gt = calculate_relative_transformation(config.src_pcd_trs,config.tgt_pcd_trs)
         
         # RE TE
         """
         re, te = transformation_error(tsfm, tsfm_gt)
         print(f'RE: %.2f, TE: %.2f' % (re, te))
         """
-        draw_registration_result(src_raw, tgt_raw, src_overlap, tgt_overlap, src_saliency, tgt_saliency, tsfm, tsfm_gt)
+        draw_registration_result(src_raw, tgt_raw, src_overlap, tgt_overlap, src_saliency, tgt_saliency, tsfm)#, tsfm_gt)
         
         
 
@@ -305,7 +306,7 @@ if __name__ == '__main__':
     # load pretrained weights
     assert config.pretrain != None
     #state = torch.load(config.pretrain)
-    state = torch.load(config.pretrain, map_location=torch.device('cpu'))
+    state = torch.load(config.pretrain, map_location=torch.device('cuda'))
 
     config.model.load_state_dict(state['state_dict'])
 
