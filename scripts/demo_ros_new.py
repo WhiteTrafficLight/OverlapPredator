@@ -101,8 +101,8 @@ class PoseEstimatorNode:
             points.append([point[0], point[1], point[2]])
 
         points = np.array(points)
-        distances = np.linalg.norm(points, axis=1)
-        points = points[distances <= 2.0]
+        #distances = np.linalg.norm(points, axis=1)
+        #points = points[distances <= 2.0]
 
         self.points_raw1 = points
         self.received_pcd1 = True
@@ -113,8 +113,8 @@ class PoseEstimatorNode:
             points.append([point[0], point[1], point[2]])
 
         points = np.array(points)
-        distances = np.linalg.norm(points, axis=1)
-        points = points[distances <= 2.0]
+        #distances = np.linalg.norm(points, axis=1)
+        #points = points[distances <= 2.0]
 
         self.points_raw2 = points
         self.received_pcd2 = True
@@ -175,7 +175,7 @@ class PoseEstimatorNode:
 
             tsfm = ransac_pose_estimation(src_pcd, tgt_pcd, src_feats, tgt_feats, mutual=False)
             print(tsfm)
-            self.publish_combined_pointcloud(src_pcd, tgt_pcd, tsfm)
+            self.publish_combined_pointcloud(self.points_raw1, self.points_raw2, tsfm)
 
     def publish_combined_pointcloud(self, src_pcd, tgt_pcd, tsfm):
         # Apply transformation to src_pcd
