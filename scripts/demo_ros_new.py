@@ -69,6 +69,8 @@ class PoseEstimatorNode:
         self.received_pcd2 = False
         self.points_raw1 = None
         self.points_raw2 = None
+        self.points_raw1_uncut = None
+        self.points_raw2_uncut = None
 
 
         rospy.init_node('pointcloud_matcher', anonymous=True)
@@ -101,8 +103,9 @@ class PoseEstimatorNode:
             points.append([point[0], point[1], point[2]])
 
         points = np.array(points)
-        #distances = np.linalg.norm(points, axis=1)
-        #points = points[distances <= 2.0]
+        self.points_raw1_uncut = points
+        distances = np.linalg.norm(points, axis=1)
+        points = points[distances <= 2.0]
 
         self.points_raw1 = points
         self.received_pcd1 = True
@@ -113,8 +116,9 @@ class PoseEstimatorNode:
             points.append([point[0], point[1], point[2]])
 
         points = np.array(points)
-        #distances = np.linalg.norm(points, axis=1)
-        #points = points[distances <= 2.0]
+        self.points_raw2_uncut = points
+        distances = np.linalg.norm(points, axis=1)
+        points = points[distances <= 2.0]
 
         self.points_raw2 = points
         self.received_pcd2 = True
@@ -175,7 +179,7 @@ class PoseEstimatorNode:
 
             tsfm = ransac_pose_estimation(src_pcd, tgt_pcd, src_feats, tgt_feats, mutual=False)
             print(tsfm)
-            self.publish_combined_pointcloud(self.points_raw1, self.points_raw2, tsfm)
+            self.publish_combined_pointcloud(self.points_raw1_uncut, self.points_raw2_uncut, tsfm)
 
     def publish_combined_pointcloud(self, src_pcd, tgt_pcd, tsfm):
         # Apply transformation to src_pcd
