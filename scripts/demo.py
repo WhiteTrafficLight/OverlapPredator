@@ -45,16 +45,16 @@ class ThreeDMatchDemo(Dataset):
 
     def __getitem__(self,item): 
         # get pointcloud
-        #src_pcd = torch.load(self.src_path).astype(np.float32)
-        #tgt_pcd = torch.load(self.tgt_path).astype(np.float32)   
+        src_pcd = torch.load(self.src_path).astype(np.float32)
+        tgt_pcd = torch.load(self.tgt_path).astype(np.float32)   
         
         
-        src_pcd = o3d.io.read_point_cloud(self.src_path)
-        tgt_pcd = o3d.io.read_point_cloud(self.tgt_path)
-        src_pcd = src_pcd.voxel_down_sample(0.025)  #original is 0.025
-        tgt_pcd = tgt_pcd.voxel_down_sample(0.025)
-        src_pcd = np.array(src_pcd.points).astype(np.float32)
-        tgt_pcd = np.array(tgt_pcd.points).astype(np.float32)
+        #src_pcd = o3d.io.read_point_cloud(self.src_path)
+        #tgt_pcd = o3d.io.read_point_cloud(self.tgt_path)
+        #src_pcd = src_pcd.voxel_down_sample(0.025)  #original is 0.025
+        #tgt_pcd = tgt_pcd.voxel_down_sample(0.025)
+        #src_pcd = np.array(src_pcd.points).astype(np.float32)
+        #tgt_pcd = np.array(tgt_pcd.points).astype(np.float32)
 
 
         src_feats=np.ones_like(src_pcd[:,:1]).astype(np.float32)
@@ -306,7 +306,7 @@ if __name__ == '__main__':
     # load pretrained weights
     assert config.pretrain != None
     #state = torch.load(config.pretrain)
-    state = torch.load(config.pretrain, map_location=torch.device('cuda'))
+    state = torch.load(config.pretrain, map_location=torch.device('cpu'))
 
     config.model.load_state_dict(state['state_dict'])
 
