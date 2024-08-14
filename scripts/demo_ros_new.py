@@ -80,7 +80,7 @@ class PoseEstimatorNode:
 
         # Load pretrained weights
         assert self.config.pretrain is not None
-        state = torch.load(config.pretrain, map_location=torch.device('cpu'))
+        state = torch.load(config.pretrain, map_location=torch.device('cuda'))
         config.model = KPFCNN(config).to(config.device)
         config.model.load_state_dict(state['state_dict'])
 
@@ -98,27 +98,51 @@ class PoseEstimatorNode:
         self.processing_thread.start()
 
     def cb_get_pointcloud1(self, data):
-        points = []
-        for point in ros_numpy.point_cloud2.pointcloud2_to_array(data):
-            points.append([point[0], point[1], point[2]])
+        np_data = ros_numpy.numpify(data)
+        points = np.ones((np_data.shape[0]*np_data.shape[1], 3))
+        if len(points) == 0:
+            print("[cbGetPointcloud] No point cloud data received, check the camera and its ROS program!")
+            return    
+        points[:, 0] = np_data['x'].flatten()
+        points[:, 1] = np_data['y'].flatten()
+        points[:, 2] = np_data['z'].flatten()
 
-        points = np.array(points)
+        # Filter out NaN values
+        #mask = ~np.isnan(points).any(axis=1)
+        #points = points[mask] 
+        
+        #points = []
+        #for point in ros_numpy.point_cloud2.pointcloud2_to_array(data):
+        #    points.append([point[0], point[1], point[2]])
+
+        #points = np.array(points)
         self.points_raw1_uncut = points
         distances = np.linalg.norm(points, axis=1)
-        points = points[distances <= 2.0]
+        points = points[distances <= 2.5]
 
         self.points_raw1 = points
         self.received_pcd1 = True
 
     def cb_get_pointcloud2(self, data):
-        points = []
-        for point in ros_numpy.point_cloud2.pointcloud2_to_array(data):
-            points.append([point[0], point[1], point[2]])
+        np_data = ros_numpy.numpify(data)
+        points = np.ones((np_data.shape[0]*np_data.shape[1], 3))
+        if len(points) == 0:
+            print("[cbGetPointcloud] No point cloud data received, check the camera and its ROS program!")
+            return    
+        points[:, 0] = np_data['x'].flatten()
+        points[:, 1] = np_data['y'].flatten()
+        points[:, 2] = np_data['z'].flatten()
 
-        points = np.array(points)
+        #mask = ~np.isnan(points).any(axis=1)
+        #points = points[mask] 
+        #points = []
+        #for point in ros_numpy.point_cloud2.pointcloud2_to_array(data):
+        #    points.append([point[0], point[1], point[2]])
+
+        #points = np.array(points)
         self.points_raw2_uncut = points
         distances = np.linalg.norm(points, axis=1)
-        points = points[distances <= 2.0]
+        points = points[distances <= 2.5]
 
         self.points_raw2 = points
         self.received_pcd2 = True
@@ -131,7 +155,7 @@ class PoseEstimatorNode:
                 pcd2 = o3d.geometry.PointCloud()
                 pcd2.points = o3d.utility.Vector3dVector(self.points_raw2)
 
-                demo_set = ThreeDMatchDemo(self.config, pcd1, pcd2)
+                demo_set = ThreeDMatchDemo(self.config, pcd2, pcd1)
                 self.demo_loader, _ = get_dataloader(dataset=demo_set,
                                                      batch_size=self.config.batch_size,
                                                      shuffle=False,
@@ -178,8 +202,8 @@ class PoseEstimatorNode:
                 tgt_pcd, tgt_feats = tgt_pcd[idx], tgt_feats[idx]
 
             tsfm = ransac_pose_estimation(src_pcd, tgt_pcd, src_feats, tgt_feats, mutual=False)
-            print(tsfm)
-            self.publish_combined_pointcloud(self.points_raw1_uncut, self.points_raw2_uncut, tsfm)
+            #print(tsfm)
+            self.publish_combined_pointcloud(self.points_raw2, self.points_raw1, tsfm)
 
     def publish_combined_pointcloud(self, src_pcd, tgt_pcd, tsfm):
         # Apply transformation to src_pcd
@@ -192,7 +216,7 @@ class PoseEstimatorNode:
         # Convert to PointCloud2 message
         header = Header()
         header.stamp = rospy.Time.now()
-        header.frame_id = 'map'
+        header.frame_id = 'camera_depth_optical_frame'
         combined_msg = pc2.create_cloud_xyz32(header, combined_pcd.tolist())
 
         # Publish the combined point cloud

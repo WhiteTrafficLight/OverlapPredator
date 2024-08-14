@@ -41,8 +41,7 @@ class PointCloudMatcher:
         rospy.Subscriber("/camera/depth/points", PointCloud2, self.cb_get_pointcloud1)
         rospy.Subscriber("/camera2/depth/points", PointCloud2, self.cb_get_pointcloud2)
         self.pub = rospy.Publisher('/combined_pointcloud', PointCloud2, queue_size=10)
-        
-        self.save_path = "/path/to/save/ply_files"  # Change to your desired save path
+
 
     def cb_get_pointcloud1(self, data):
         np_data = ros_numpy.numpify(data)
@@ -72,23 +71,6 @@ class PointCloudMatcher:
         self.points_raw2 = points
         self.received_pcd2 = True
 
-    def save_pcd_files(self):
-        while not self.received_pcd1 or not self.received_pcd2:
-            rospy.sleep(0.1)
-
-        if not os.path.exists(self.save_path):
-            os.makedirs(self.save_path)
-
-        pcd1 = o3d.geometry.PointCloud()
-        pcd1.points = o3d.utility.Vector3dVector(self.points_raw1)
-        o3d.io.write_point_cloud(os.path.join(self.save_path, "camera1.ply"), pcd1)
-
-        pcd2 = o3d.geometry.PointCloud()
-        pcd2.points = o3d.utility.Vector3dVector(self.points_raw2)
-        o3d.io.write_point_cloud(os.path.join(self.save_path, "camera2.ply"), pcd2)
-
-        print("Saved camera1.ply and camera2.ply")
-
     def process_pointclouds(self):
         while not self.received_pcd1 or not self.received_pcd2:
             rospy.sleep(0.1)
@@ -114,7 +96,8 @@ class PointCloudMatcher:
             'src_pcd': torch.tensor(src_pcd).to(self.config.device),
             'tgt_pcd': torch.tensor(tgt_pcd).to(self.config.device),
             'src_feats': torch.tensor(src_feats).to(self.config.device),
-            'tgt_feats': torch.tensor(tgt_feats).to(self.config.device)
+            'tgt_feats': torch.tensor(tgt_feats).to(self.config.device),
+            'features': torch.cat((torch.tensor(src_feats), torch.tensor(tgt_feats))).to(self.config.device)
         }
 
         # Perform pose estimation
@@ -149,35 +132,6 @@ class PointCloudMatcher:
         pc2 = ros_numpy.point_cloud2.array_to_pointcloud2(points, header=header)
         self.pub.publish(pc2)
 
-
-class ThreeDMatchDemo(Dataset):
-    def __init__(self, config, src_path, tgt_path):
-        super(ThreeDMatchDemo, self).__init__()
-        self.config = config
-        self.src_path = src_path
-        self.tgt_path = tgt_path
-
-    def __len__(self):
-        return 1
-
-    def __getitem__(self, item):
-        # get pointcloud
-        src_pcd = o3d.io.read_point_cloud(self.src_path)
-        tgt_pcd = o3d.io.read_point_cloud(self.tgt_path)
-        src_pcd = src_pcd.voxel_down_sample(0.025)  # original is 0.025
-        tgt_pcd = tgt_pcd.voxel_down_sample(0.025)
-        src_pcd = np.array(src_pcd.points).astype(np.float32)
-        tgt_pcd = np.array(tgt_pcd.points).astype(np.float32)
-
-        src_feats = np.ones_like(src_pcd[:, :1]).astype(np.float32)
-        tgt_feats = np.ones_like(tgt_pcd[:, :1]).astype(np.float32)
-
-        # fake the ground truth information
-        rot = np.eye(3).astype(np.float32)
-        trans = np.ones((3, 1)).astype(np.float32)
-        correspondences = torch.ones(1, 2).long()
-
-        return src_pcd, tgt_pcd, src_feats, tgt_feats, rot, trans, correspondences, src_pcd, tgt_pcd, torch.ones(1)
 
 
 def main(config):
@@ -223,12 +177,15 @@ if __name__ == '__main__':
 
     # Load pretrained weights
     assert config.pretrain is not None
-    state = torch.load(config.pretrain, map_location=torch.device('cpu'))
+    state = torch.load(config.pretrain, map_location=torch.device('cuda'))
     config.model.load_state_dict(state['state_dict'])
 
     # Process point clouds
     main(config)
     rospy.spin()
+
+
+
 
 
 
