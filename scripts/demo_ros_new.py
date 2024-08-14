@@ -71,6 +71,8 @@ class PoseEstimatorNode:
         self.points_raw2 = None
         self.points_raw1_uncut = None
         self.points_raw2_uncut = None
+        self.static = True
+        self.tsfm = None
 
 
         rospy.init_node('pointcloud_matcher', anonymous=True)
@@ -169,6 +171,9 @@ class PoseEstimatorNode:
                 self.received_pcd2 = False
 
     def estimate_pose(self):
+        if self.static and self.tsfm is not None:
+            self.publish_combined_pointcloud(self.points_raw2, self.points_raw1, self.tsfm)
+            return
         self.config.model.eval()
         c_loader_iter = iter(self.demo_loader)
         with torch.no_grad():
@@ -203,6 +208,7 @@ class PoseEstimatorNode:
 
             tsfm = ransac_pose_estimation(src_pcd, tgt_pcd, src_feats, tgt_feats, mutual=False)
             #print(tsfm)
+            self.tsfm = tsfm
             self.publish_combined_pointcloud(self.points_raw2, self.points_raw1, tsfm)
 
     def publish_combined_pointcloud(self, src_pcd, tgt_pcd, tsfm):
