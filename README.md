@@ -1,4 +1,5 @@
-This repository contains some variations from the original author. You can find the script streaming depth camera data and registering two point cloud sets in real time.
+This repository contains some variations from the original author. You can find the script streaming depth camera data and registering two point cloud sets in real time in the folder 'scripts'. There are also different experiments to enhance the performance of PREDATOR using Maximal Clique(MAC). Please refer to the scripts in 'scripts' 
+
 ## PREDATOR: Registration of 3D Point Clouds with Low Overlap (CVPR 2021, Oral)
 This repository represents the official implementation of the paper:
 
