@@ -1,3 +1,4 @@
+This repository contains some variations from the original author. You can find the script streaming depth camera data and registering two point cloud sets in real time.
 ## PREDATOR: Registration of 3D Point Clouds with Low Overlap (CVPR 2021, Oral)
 This repository represents the official implementation of the paper:
 
